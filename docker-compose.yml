@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  farmcontrol-printhost:
+    image: farmcontrol-printhost
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000"
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+      restart_policy:
+        condition: on-failure
+
+  nginx:
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - "80:80"
+    depends_on:
+      - farmcontrol-printhost
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "256M"
+      restart_policy:
+        condition: on-failure
