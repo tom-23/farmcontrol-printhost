@@ -1,24 +1,28 @@
-const log4js = require("log4js");
-const WebSocketClient = require("./src/client.js").WebSocketClient;
-const TCPServer = require("./src/server.js").TCPServer;
+import log4js from 'log4js';
+import WebSocketClient from './src/WebSocketClient.js';
+import TCPServer from './src/TCPServer.js';
+import dns from 'node:dns';
+import os from 'node:os';
+import dotenv from 'dotenv';
 
-const os = require("os");
-const config = require("./config.json");
+dotenv.config();
 
 const logger = log4js.getLogger("App");
-logger.level = config.logLevel;
+logger.level = process.env.LOG_LEVEL;
 
 function showSystemInfo() {
   logger.info("=== System Info ===")
   logger.info("Hostname:", os.hostname());
-  logger.info("Memory:", os.totalmem() / 1024 / 1024 + "mb");
+  const networkInterfaces = os.networkInterfaces();
+  logger.info("Interfaces:", networkInterfaces);
+  logger.info("Memory:", Math.round(os.totalmem() / 1024 / 1024) + "mb");
   console.log("");
 }
 
 showSystemInfo();
 logger.info("Print Host Starting...");
 
-var client = new WebSocketClient("http://localhost:5050");
-var server = new TCPServer("0.0.0.0", 9000, client);
+var client = new WebSocketClient(process.env.WS_SERVER_ADDRESS);
+var server = new TCPServer("0.0.0.0", process.env.TCP_SERVER_PORT, client);
 client.start();
 server.start();

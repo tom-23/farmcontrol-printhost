@@ -1,4 +1,4 @@
-class GCODE {
+export default class GCode {
   constructor() {
     this.lineNumber = 0;
   }
@@ -13,10 +13,10 @@ class GCODE {
 
     return "*" + checksum;
   }
-  calculateMarlinChecksum(lineNumber, command) {
+  calculateMarlinChecksum(lineNumber, command, params = "") {
     // Remove the initial '$' and any '*' character and checksum bytes
     let strippedCommand =
-      "N" + lineNumber + command.trim().replace(/^\$|(\*.*)$/g, "");
+      "N" + lineNumber + command.trim().replace(/^\$|(\*.*)$/g, "") + params;
 
     // Calculate the XOR checksum
     const checksum = strippedCommand
@@ -24,17 +24,17 @@ class GCODE {
       .map((c) => c.charCodeAt(0))
       .reduce((x, y) => x ^ y, 0);
 
-    return `N${lineNumber} ${command} *${checksum}`;
+    return `N${lineNumber} ${command} ${params}*${checksum}`;
   }
 
-  format(comand) {
+  format(comand, params) {
     this.lineNumber = this.lineNumber + 1;
-    return this.calculateMarlinChecksum(this.lineNumber - 1, comand);
+    return this.calculateMarlinChecksum(this.lineNumber - 1, comand, params);
   }
 
   resetLineNumber() {
-    this.lineNumber = 0;
-    return this.format("M110");
+    this.lineNumber = 1;
+    return "M110 N0";
   }
 
   temperatureAutoReport(seconds) {
@@ -74,7 +74,7 @@ class GCODE {
   }
 
   homeAxis(axis) {
-    if (axis == "ALL") { axis = "" }
+    if (axis == "ALL") { axis = " W" }
     if (axis == " XY" || axis == " YX") { axis = " X Y" }
     return this.format("G28" + axis);
   }
@@ -85,6 +85,22 @@ class GCODE {
 
   relativePositioning() {
     return this.format("G91")
+  }
+
+  bedLeveling() {
+    return this.format("G80")
+  }
+
+  fillamentChange() {
+    return this.format("M600")
+  }
+
+  startSDWrite(filename) {
+    return this.format("M28", "/" + filename)
+  }
+
+  stopSDWrite() {
+    return this.format("M29")
   }
 
   moveAxis(axis, pos, rate = 100) {
@@ -163,9 +179,10 @@ class GCODE {
     return firmwareInfo;
   }
 
-  print(gcode) {
+  writeToSD(gcode, filename) {
     var output = "";
     output += this.resetLineNumber() + "\n";
+    output += this.startSDWrite(filename) + "\n";
     const lines = gcode.split('\n');
 
     for (let i = 0; i < lines.length; i++) {
@@ -180,20 +197,20 @@ class GCODE {
       }
     }
 
-    // Final stopWrite command
-    //const stopWrite = this.format("M29");
+    output += this.stopSDWrite();
 
-    //output = output + stopWrite;
-
-    // Return final GCODE
     return output;
+  }
+
+  listSDCard() {
+    return this.format("M20 L");
+  }
+
+  deleteSDFile(filename) {
+    return this.format("M30", "/" + filename);
   }
 
   echo(message) {
     return this.format("M118 " + message);
   }
 }
-
-module.exports = {
-  GCODE,
-};

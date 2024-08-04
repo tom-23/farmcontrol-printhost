@@ -1,18 +1,18 @@
-const log4js = require("log4js");
-const config = require("../config.json");
-const Printer = require("./printer.js").Printer;
-const gcode = require("./gcode.js");
+import log4js from 'log4js';
+import Printer from './Printer.js';
+import GCode from './GCode.js';
+import net from 'net';
+import { request } from 'http';
+import dotenv from 'dotenv';
 
+dotenv.config();
 
 const logger = log4js.getLogger("TCP Server");
-logger.level = config.logLevel;
-
-const net = require("net");
-const { request } = require("http");
+logger.level = process.env.LOG_LEVEL;
 
 var newPrinter;
 
-class TCPServer {
+export default class TCPServer {
   constructor(host, port, webSocketClient) {
     this.host = host;
     this.port = port;
@@ -48,60 +48,20 @@ class TCPServer {
     );
     logger.info(`Local address: ${socket.localAddress}:${socket.localPort}`);
 
-    newPrinter = new Printer(
-      
-      socket.remoteAddress,
-      function(data) {
-        logger.trace("Sending:", data);
-        socket.write(data + "\n");
-      },
-      this.webSocketClient
-    );
-    
-    this.webSocketClient.sendOnline(newPrinter);
-
-    newPrinter.resetPrinter(); // Sanitary check
+    newPrinter = new Printer(socket, this);
 
     this.firmwareUploadPrinter = newPrinter;
     this.printers.push(newPrinter);
 
     // Handle incoming data from clients
     socket.on("data", (data) => {
-      this.handleData(socket, data);
-    });
-
-    // Handle client disconnection
-    socket.on("end", () => {
-      this.handleDisconnection(socket);
+      this.getPrinter(socket.remoteAddress).handleData(data);
     });
 
     // Handle errors
     socket.on("error", (err) => {
       this.handleError(err);
     });
-  }
-
-  handleData(socket, data) {
-    this.getPrinter(socket.remoteAddress).handleData(socket, data) // Load data into printer
-  }
-
-  handleDisconnection(socket) {
-    logger.info("Client disconnected");
-    // Remove the client socket from the clients array
-    const clientsIndex = this.clients.indexOf(socket);
-    if (clientsIndex !== -1) {
-      this.clients.splice(clientsIndex, 1);
-    }
-
-    const printersIndex = this.printers
-      .map((e) => e.remoteAddress)
-      .indexOf(socket.remoteAddress);
-      
-    this.webSocketClient.sendOffline(this.printers[printersIndex]);
-    
-    if (printersIndex !== -1) {
-      this.printers.splice(printersIndex, 1);
-    }
   }
 
   handleError(err) {
@@ -134,5 +94,3 @@ class TCPServer {
     });
   }
 }
-
-module.exports = { TCPServer };

@@ -1,18 +1,20 @@
-const log4js = require("log4js");
-const io = require("socket.io-client");
-const jwt = require('jsonwebtoken');
-const os = require("os");
-const config = require("../config.json");
+import log4js from 'log4js';
+import io from 'socket.io-client';
+import jwt from 'jsonwebtoken';
+import os from 'node:os';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const logger = log4js.getLogger("Web Sockets");
-logger.level = config.logLevel;
+logger.level = process.env.LOG_LEVEL;
 
 const hostId = os.hostname();
 
-class WebSocketClient {
+export default class WebSocketClient {
   constructor(connectionUrl) {
     this.connectionUrl = connectionUrl;
-    this.token = jwt.sign({ hostId: hostId }, config.jwt_secret);
+    this.token = jwt.sign({ hostId: hostId }, process.env.JWT_SECRET);
   }
 
   setTCPServer(tcpServer) {
@@ -25,8 +27,8 @@ class WebSocketClient {
       if (this.tcpServer !== undefined) {
         for (let i = 0; i < this.tcpServer.printers.length; i++) {
           const printer = this.tcpServer.printers[i];
-          console.log("Sending onine status for", printer.remoteAddress);
-          this.sendOnline(printer);
+          logger.info("Sending onine status for", printer.remoteAddress);
+          this.sendStatus(printer);
         }
       }
     });
@@ -68,47 +70,65 @@ class WebSocketClient {
       this.tcpServer.getPrinter(data.remoteAddress).moveAxis(axis, pos, rate);
     });
 
+    this.socket.on("levelBed", (data) => {
+      this.tcpServer.getPrinter(data.remoteAddress).levelBed();
+    });
+
+    this.socket.on("changeFillament", (data) => {
+      this.tcpServer.getPrinter(data.remoteAddress).changeFillament();
+    });
+
     this.socket.on("firmwareUpdate", (data) => {
       this.tcpServer.getPrinter(data.remoteAddress).firmwareUpdate();
     });
 
-    this.socket.on("writeToSD", (data) => {
+    this.socket.on("print", (data) => {
       this.tcpServer.getPrinter(data.remoteAddress).startPrint(data.data.gcode);
     });
-  }
-  
-  sendOnline(printer) {
-    logger.info("Sending online message...")
-    const data = {
-      type: 'printer',
-      hostId,
-      remoteAddress: printer.remoteAddress
-    }
-    this.socket.emit("online", data)
+
+    this.socket.on("writeToSD", (data) => {
+      this.tcpServer.getPrinter(data.remoteAddress).writeToSD(data.data.gcode, data.data.filename);
+    });
+
+    this.socket.on("deploy", (data) => {
+      this.tcpServer.getPrinter(data.remoteAddress).deploy(data.manifest);
+    });
   }
 
-  sendStatus(printer, data) {
-    logger.info("Sending '" + data.type + "' status message...")
+  sendStatus(printer, cb) {
+    logger.info("Sending '" + printer.status + "' status message...")
     const statusData = {
       type: 'printer',
-      status: data,
+      status: { type: printer.status, percent: printer.percent },
       hostId,
       remoteAddress: printer.remoteAddress
     }
-    this.socket.emit("status", statusData)
+    this.socket.emit("status", statusData, cb)
   }
 
-  sendOffline(printer) {
-    logger.info("Sending offline message...")
-    const data = {
+  sendAlert(printer, data, cb) {
+    logger.info("Sending '" + data.type + "' alert message...")
+    const alertData = {
       type: 'printer',
+      alert: data,
       hostId,
       remoteAddress: printer.remoteAddress
     }
-    this.socket.emit("offline", data)
+    this.socket.emit("alert", alertData, cb)
   }
 
-  sendTemperatureUpdate(remoteAddress, temperatures) {
+  sendFileList(printer, fileList, cb) {
+    logger.info("Sending list of " + fileList.length + " file(s)...")
+    const fileListData = {
+      type: 'printer',
+      fileList,
+      hostId,
+      remoteAddress: printer.remoteAddress
+    }
+    this.socket.emit("fileList", fileListData, cb)
+  }
+
+  sendTemperatureUpdate(remoteAddress, temperatures, cb) {
     if (!this.socket.connected) {
       logger.error("Not connected.")
       return;
@@ -117,7 +137,7 @@ class WebSocketClient {
       remoteAddress,
       temperatures
     }
-    this.socket.emit("temperature", data);
+    this.socket.emit("temperature", data, cb);
   }
 
   start() {
@@ -129,5 +149,3 @@ class WebSocketClient {
     this.initHandlers();
   }
 }
-
-module.exports = { WebSocketClient };
